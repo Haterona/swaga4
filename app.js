@@ -3,13 +3,19 @@
   "use strict";
 
   /**
-   * Hugging Face inference endpoint for Stable Diffusion XL base.
-   * This endpoint expects a JSON body with an `inputs` string.
+   * Hugging Face router endpoints for different tasks.
+   * All endpoints share the same HF token provided by the user.
    */
-  const HF_ENDPOINT =
-    "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0";
+  const HF_ENDPOINTS = {
+    style:
+      "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0",
+    background:
+      "https://router.huggingface.co/hf-inference/models/briaai/RMBG-2.0",
+    quality:
+      "https://router.huggingface.co/hf-inference/models/ai-forever/Real-ESRGAN"
+  };
 
-  // Grab references to DOM elements once.
+  // DOM references
   const apiKeyInput = document.getElementById("apiKey");
   const foodSelect = document.getElementById("Food type");
   const editSelect = document.getElementById("Edit");
@@ -18,32 +24,72 @@
   const outputArea = document.getElementById("outputArea");
 
   /**
-   * Build a descriptive text prompt based on selected food and processing type.
-   * The goal is to encourage high–quality, commercial-grade food photography.
+   * Build a descriptive text prompt for style generation (SDXL).
    *
-   * @param {string} food - Selected food type (e.g. "Pizza").
-   * @param {string} editType - Selected processing type (e.g. "Quality improvement").
-   * @returns {string} Descriptive text prompt for the model.
+   * @param {string} food - Selected food type.
+   * @param {string} editType - Selected processing type.
+   * @returns {string} Prompt text.
    */
   function buildPrompt(food, editType) {
-    const editMap = {
-      Style:
-        "hero shot in a clean, modern style, studio lighting, high contrast, appetizing presentation",
-      "Background cleaning":
-        "isolated on a clean, soft gradient background, no clutter, studio tabletop photography",
-      "Quality improvement":
-        "ultra detailed, crisp focus, high-resolution, professional food photography lighting"
-    };
+    const base =
+      `${food} hero shot, ultra realistic, commercial food photography, ` +
+      "shot on a dark matte table, shallow depth of field, cinematic lighting";
 
-    const editDescription =
-      editMap[editType] ||
-      "professional food photography, sharp focus, soft studio lighting";
+    if (editType === "Background cleaning") {
+      return (
+        base +
+        ", isolated on a clean soft gradient background, no clutter, product catalog look, web shop ready"
+      );
+    }
 
-    return `${food} photo, ${editDescription}, perfect for an online sales site hero banner, shot on DSLR, 4k, realistic textures`;
+    if (editType === "Quality improvement") {
+      return (
+        base +
+        ", crisp 4k detail, noise-free, high dynamic range, sharp textures, studio-grade retouching"
+      );
+    }
+
+    // Default for "Style"
+    return (
+      base +
+      ", modern editorial style, subtle color grading, perfect for a sales landing page hero banner"
+    );
   }
 
   /**
-   * Display a loading status message inside the output area.
+   * Convert a File to a base64-encoded string without the data URL prefix.
+   *
+   * @param {File} file
+   * @returns {Promise<string>} Base64 string for the image.
+   */
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result !== "string") {
+          reject(new Error("Unexpected FileReader result type."));
+          return;
+        }
+        const commaIndex = result.indexOf(",");
+        if (commaIndex === -1) {
+          resolve(result);
+        } else {
+          resolve(result.slice(commaIndex + 1));
+        }
+      };
+
+      reader.onerror = () => {
+        reject(reader.error || new Error("Failed to read image file."));
+      };
+
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /**
+   * Show a loading indicator in the output area.
    */
   function showLoading() {
     outputArea.innerHTML = "";
@@ -60,7 +106,7 @@
 
     const sub = document.createElement("div");
     sub.className = "status-sub";
-    sub.textContent = "This may take up to a minute while the model loads.";
+    sub.textContent = "This may take up to a minute while the models load.";
 
     wrapper.appendChild(dot);
     wrapper.appendChild(main);
@@ -70,9 +116,9 @@
   }
 
   /**
-   * Display a user-friendly error message in the output area.
+   * Show a user-friendly error message.
    *
-   * @param {string} message - Error text for the user.
+   * @param {string} message
    */
   function showError(message) {
     outputArea.innerHTML = "";
@@ -83,20 +129,19 @@
   }
 
   /**
-   * Display the generated image blob in the output area.
+   * Show an image generated from a Blob in the output area.
    *
-   * @param {Blob} imageBlob - Image data returned by the API.
-   * @param {string} prompt - Prompt used to generate the image (for accessibility).
+   * @param {Blob} imageBlob
+   * @param {string} alt
    */
-  function showImage(imageBlob, prompt) {
+  function showImageFromBlob(imageBlob, alt) {
     const objectUrl = URL.createObjectURL(imageBlob);
 
     outputArea.innerHTML = "";
     const img = document.createElement("img");
     img.src = objectUrl;
-    img.alt = `Generated food image based on prompt: ${prompt}`;
+    img.alt = alt;
 
-    // Revoke the temporary URL after the image has loaded to free memory.
     img.addEventListener("load", () => {
       URL.revokeObjectURL(objectUrl);
     });
@@ -105,14 +150,28 @@
   }
 
   /**
-   * Call the Hugging Face inference API and return the generated image as a Blob.
+   * Show an image using a data URL (e.g. base64 mask) in the output area.
    *
-   * @param {string} apiKey - Hugging Face API token.
-   * @param {string} prompt - Text prompt for the model.
-   * @returns {Promise<Blob>} Blob containing the generated image.
+   * @param {string} dataUrl
+   * @param {string} alt
    */
-  async function generateImage(apiKey, prompt) {
-    const response = await fetch(HF_ENDPOINT, {
+  function showImageFromDataUrl(dataUrl, alt) {
+    outputArea.innerHTML = "";
+    const img = document.createElement("img");
+    img.src = dataUrl;
+    img.alt = alt;
+    outputArea.appendChild(img);
+  }
+
+  /**
+   * Call Stable Diffusion XL (text-to-image) for "Style" mode.
+   *
+   * @param {string} apiKey
+   * @param {string} prompt
+   * @returns {Promise<Blob>}
+   */
+  async function callStyleGeneration(apiKey, prompt) {
+    const response = await fetch(HF_ENDPOINTS.style, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -123,34 +182,130 @@
     });
 
     if (!response.ok) {
-      // Try to extract any text-based error for easier debugging during development.
       let errorDetail = "";
       try {
         errorDetail = await response.text();
       } catch {
-        // Ignore parse errors and fall back to generic message.
+        // ignore
       }
       const shortDetail =
         errorDetail && errorDetail.length > 160
           ? `${errorDetail.slice(0, 160)}…`
           : errorDetail;
-
-      const message =
-        "Generation failed. The model may be loading or your key may not have access.";
-      const combined = shortDetail ? `${message} Details: ${shortDetail}` : message;
-
-      throw new Error(combined);
+      const baseMessage =
+        "Style generation failed (SDXL). The model may be loading or your key may not have access.";
+      const fullMessage = shortDetail
+        ? `${baseMessage} Details: ${shortDetail}`
+        : baseMessage;
+      throw new Error(fullMessage);
     }
 
     return await response.blob();
   }
 
   /**
-   * Handle click on the "Create Image" button:
-   *  - Read user inputs
-   *  - Build a descriptive prompt
-   *  - Call the Hugging Face API
-   *  - Render the resulting image or an error state
+   * Call briaai/RMBG-2.0 via image segmentation API.
+   * Returns a data URL of the predicted mask (white foreground / black background).
+   *
+   * @param {string} apiKey
+   * @param {File} imageFile
+   * @returns {Promise<string>} data URL with the mask PNG.
+   */
+  async function callBackgroundRemoval(apiKey, imageFile) {
+    const base64Image = await fileToBase64(imageFile);
+
+    const response = await fetch(HF_ENDPOINTS.background, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify({ inputs: base64Image })
+    });
+
+    if (!response.ok) {
+      let errorDetail = "";
+      try {
+        errorDetail = await response.text();
+      } catch {
+        // ignore
+      }
+      const shortDetail =
+        errorDetail && errorDetail.length > 160
+          ? `${errorDetail.slice(0, 160)}…`
+          : errorDetail;
+      const baseMessage =
+        "Background removal failed (RMBG-2.0). Check access to the model and try again.";
+      const fullMessage = shortDetail
+        ? `${baseMessage} Details: ${shortDetail}`
+        : baseMessage;
+      throw new Error(fullMessage);
+    }
+
+    const data = await response.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new Error("Background removal returned an empty result.");
+    }
+
+    // Pick the segment with the highest score.
+    const best = data.reduce((acc, item) =>
+      !acc || (item && item.score > acc.score) ? item : acc
+    );
+
+    if (!best || !best.mask) {
+      throw new Error("Background removal response did not include a mask.");
+    }
+
+    return `data:image/png;base64,${best.mask}`;
+  }
+
+  /**
+   * Call Real-ESRGAN (image-to-image / super-resolution).
+   * Uses raw image bytes as input and returns an upscaled image blob.
+   *
+   * @param {string} apiKey
+   * @param {File} imageFile
+   * @returns {Promise<Blob>}
+   */
+  async function callQualityImprovement(apiKey, imageFile) {
+    const response = await fetch(HF_ENDPOINTS.quality, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": imageFile.type || "application/octet-stream",
+        Accept: "image/png"
+      },
+      body: imageFile
+    });
+
+    if (!response.ok) {
+      let errorDetail = "";
+      try {
+        errorDetail = await response.text();
+      } catch {
+        // ignore
+      }
+      const shortDetail =
+        errorDetail && errorDetail.length > 160
+          ? `${errorDetail.slice(0, 160)}…`
+          : errorDetail;
+      const baseMessage =
+        "Quality improvement failed (Real-ESRGAN). The model may not be available on the free Inference API.";
+      const fullMessage = shortDetail
+        ? `${baseMessage} Details: ${shortDetail}`
+        : baseMessage;
+      throw new Error(fullMessage);
+    }
+
+    return await response.blob();
+  }
+
+  /**
+   * Main button handler:
+   *  - Reads user inputs
+   *  - Decides which model to call
+   *  - Displays the resulting image or errors
    */
   async function handleGenerateClick() {
     const apiKey = apiKeyInput.value.trim();
@@ -158,40 +313,67 @@
     const editType = editSelect.value;
     const photoFile = photoInput.files && photoInput.files[0];
 
-    // Basic validation for the API key.
     if (!apiKey) {
       showError("Please paste your Hugging Face API key before generating.");
       return;
     }
 
-    // The photo file is currently not sent to the API in this MVP,
-    // but we still read it so it is available for future image-to-image flows.
-    if (!photoFile) {
-      // Optional gentle reminder; not a hard error.
-      console.info(
-        "[Food Image Enhancer] No photo selected. Using text prompt only for generation."
+    // For background cleaning and quality improvement we must have a photo.
+    if (
+      (editType === "Background cleaning" || editType === "Quality improvement") &&
+      !photoFile
+    ) {
+      showError(
+        `Please upload a food photo for “${editType}”. Style mode can work without a file.`
       );
+      return;
     }
 
     const prompt = buildPrompt(food, editType);
 
-    // Update UI to loading state.
     showLoading();
     generateBtn.disabled = true;
-    const originalLabel = generateBtn.textContent;
-    generateBtn.textContent = "Creating…";
+    const originalBtnHtml = generateBtn.innerHTML;
+    generateBtn.innerHTML = "<span>Creating…</span>";
 
     try {
-      const imageBlob = await generateImage(apiKey, prompt);
-      showImage(imageBlob, prompt);
+      if (editType === "Style") {
+        // Text-to-image with SDXL
+        const imageBlob = await callStyleGeneration(apiKey, prompt);
+        showImageFromBlob(
+          imageBlob,
+          `Styled food image for ${food} using SDXL based on prompt: ${prompt}`
+        );
+      } else if (editType === "Background cleaning") {
+        // Background removal with RMBG-2.0
+        const maskDataUrl = await callBackgroundRemoval(apiKey, photoFile);
+        showImageFromDataUrl(
+          maskDataUrl,
+          `Background mask for ${food} created with RMBG-2.0`
+        );
+      } else if (editType === "Quality improvement") {
+        // Super-resolution / enhancement with Real-ESRGAN
+        const upscaledBlob = await callQualityImprovement(apiKey, photoFile);
+        showImageFromBlob(
+          upscaledBlob,
+          `Quality-improved ${food} photo upscaled by Real-ESRGAN`
+        );
+      } else {
+        // Fallback to style generation if an unknown option appears.
+        const fallbackBlob = await callStyleGeneration(apiKey, prompt);
+        showImageFromBlob(
+          fallbackBlob,
+          `Generated food image for ${food} (fallback style mode)`
+        );
+      }
     } catch (error) {
       console.error(error);
       showError(
-        "Something went wrong while generating the image. Please check your API key, model access, and try again."
+        "Something went wrong while processing the image. Please check your API key, model access and try again."
       );
     } finally {
       generateBtn.disabled = false;
-      generateBtn.textContent = originalLabel;
+      generateBtn.innerHTML = originalBtnHtml;
     }
   }
 
@@ -199,3 +381,4 @@
     generateBtn.addEventListener("click", handleGenerateClick);
   }
 })();
+::contentReference[oaicite:0]{index=0}
