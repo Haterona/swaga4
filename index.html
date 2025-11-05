@@ -1,0 +1,340 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Food Image Enhancer MVP</title>
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #020617;
+      --card-bg: #0f172a;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.15);
+      --border-subtle: rgba(148, 163, 184, 0.3);
+      --text-main: #e5e7eb;
+      --text-muted: #9ca3af;
+      --error: #f97373;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #020617 0, #020617 40%, #000 100%);
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+    }
+
+    .app-shell {
+      width: 100%;
+      max-width: 480px;
+      padding: clamp(16px, 4vw, 24px);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    header {
+      text-align: left;
+      padding-bottom: 4px;
+    }
+
+    header h1 {
+      margin: 0 0 4px;
+      font-size: 1.3rem;
+      letter-spacing: 0.03em;
+    }
+
+    header p {
+      margin: 0;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .card {
+      background: linear-gradient(
+            135deg,
+            rgba(56, 189, 248, 0.18),
+            transparent 50%
+          )
+          border-box,
+        var(--card-bg);
+      border-radius: 18px;
+      border: 1px solid var(--border-subtle);
+      padding: 16px 14px 14px;
+      backdrop-filter: blur(18px);
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.75);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    label {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    input[type="text"],
+    input[type="file"],
+    select {
+      width: 100%;
+      padding: 10px 11px;
+      border-radius: 12px;
+      border: 1px solid var(--border-subtle);
+      background-color: rgba(15, 23, 42, 0.85);
+      color: var(--text-main);
+      font-size: 0.9rem;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input[type="text"]::placeholder {
+      color: rgba(148, 163, 184, 0.7);
+    }
+
+    input[type="text"]:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent-soft);
+    }
+
+    input[type="file"] {
+      padding: 7px 0;
+      border-radius: 0;
+      border: none;
+      background: none;
+      font-size: 0.85rem;
+      color: var(--text-main);
+    }
+
+    .file-hint {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    #generateBtn {
+      margin-top: 4px;
+      width: 100%;
+      padding: 11px 14px;
+      border-radius: 999px;
+      border: none;
+      background: radial-gradient(circle at 0 0, #38bdf8, #0ea5e9);
+      color: #f9fafb;
+      font-size: 0.98rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 14px 35px rgba(56, 189, 248, 0.45);
+      transition: transform 0.1s ease, box-shadow 0.1s ease, opacity 0.15s ease;
+    }
+
+    #generateBtn:active {
+      transform: translateY(1px) scale(0.99);
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.7);
+    }
+
+    #generateBtn[disabled] {
+      opacity: 0.65;
+      cursor: default;
+      box-shadow: none;
+    }
+
+    #generateBtn span.icon {
+      font-size: 1.1rem;
+    }
+
+    .hint-text {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: -4px;
+    }
+
+    #outputArea {
+      margin-top: 4px;
+      min-height: 160px;
+      border-radius: 18px;
+      border: 1px dashed var(--border-subtle);
+      background: rgba(15, 23, 42, 0.65);
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      overflow: hidden;
+      position: relative;
+    }
+
+    #outputArea img {
+      max-width: 100%;
+      max-height: 360px;
+      border-radius: 12px;
+      display: block;
+      object-fit: cover;
+    }
+
+    .status-text {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.6);
+      animation: pulse 1.2s infinite;
+    }
+
+    .status-main {
+      font-size: 0.9rem;
+    }
+
+    .status-sub {
+      font-size: 0.77rem;
+      color: var(--text-muted);
+    }
+
+    .error {
+      color: var(--error);
+    }
+
+    footer {
+      margin-top: 6px;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      text-align: left;
+      line-height: 1.4;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.6);
+      }
+      70% {
+        transform: scale(1.4);
+        box-shadow: 0 0 0 10px rgba(56, 189, 248, 0);
+      }
+      100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(56, 189, 248, 0);
+      }
+    }
+
+    @media (max-width: 360px) {
+      header h1 {
+        font-size: 1.15rem;
+      }
+      .card {
+        padding-inline: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header>
+      <h1>Food Image Enhancer</h1>
+      <p>Fix and restyle food photos for your sales pages using Hugging&nbsp;Face.</p>
+    </header>
+
+    <section class="card" aria-label="Food image generation controls">
+      <div class="field-group">
+        <label for="apiKey">Hugging Face API key</label>
+        <input
+          type="text"
+          id="apiKey"
+          autocomplete="off"
+          placeholder="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          inputmode="text"
+        />
+        <p class="hint-text">Key is only used locally in your browser.</p>
+      </div>
+
+      <div class="field-group">
+        <label for="photoInput">Original food photo (optional)</label>
+        <input
+          type="file"
+          id="photoInput"
+          accept="image/*"
+          capture="environment"
+        />
+        <p class="file-hint">
+          Choose a bad food shot you want to improve. For this MVP the prompt is
+          used; the file is kept for future enhancements.
+        </p>
+      </div>
+
+      <div class="field-group">
+        <label for="Food type">Food type</label>
+        <select id="Food type">
+          <option value="Sushi" selected>Sushi</option>
+          <option value="Pizza">Pizza</option>
+          <option value="Burger">Burger</option>
+          <option value="Drink">Drink</option>
+        </select>
+      </div>
+
+      <div class="field-group">
+        <label for="Edit">Processing type</label>
+        <select id="Edit">
+          <option value="Style" selected>Style</option>
+          <option value="Background cleaning">Background cleaning</option>
+          <option value="Quality improvement">Quality improvement</option>
+        </select>
+      </div>
+
+      <button id="generateBtn" type="button">
+        <span class="icon">✨</span>
+        <span>Create Image</span>
+      </button>
+    </section>
+
+    <div
+      id="outputArea"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <span>No image yet. Pick options and tap “Create Image”.</span>
+    </div>
+
+    <footer>
+      Uses the <code>stabilityai/stable-diffusion-xl-base-1.0</code> model via the
+      Hugging&nbsp;Face Inference API. Make sure your key has access to this model.
+    </footer>
+  </div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
