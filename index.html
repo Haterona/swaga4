@@ -266,7 +266,7 @@
   <div class="app-shell">
     <header>
       <h1>Food Image Enhancer</h1>
-      <p>Fix and restyle food photos for your sales pages using Hugging&nbsp;Face.</p>
+      <p>Fix, clean background and upscale food photos with Hugging&nbsp;Face.</p>
     </header>
 
     <section class="card" aria-label="Food image generation controls">
@@ -283,7 +283,7 @@
       </div>
 
       <div class="field-group">
-        <label for="photoInput">Original food photo (optional)</label>
+        <label for="photoInput">Original food photo</label>
         <input
           type="file"
           id="photoInput"
@@ -291,8 +291,8 @@
           capture="environment"
         />
         <p class="file-hint">
-          Choose a bad food shot you want to improve. For this MVP the prompt is
-          used; the file is kept for future enhancements.
+          Required for <strong>Background cleaning</strong> and
+          <strong>Quality improvement</strong>. Optional for <strong>Style</strong>.
         </p>
       </div>
 
@@ -330,8 +330,10 @@
     </div>
 
     <footer>
-      Uses the <code>stabilityai/stable-diffusion-xl-base-1.0</code> model via the
-      Hugging&nbsp;Face Inference API. Make sure your key has access to this model.
+      Uses Hugging Face Inference API with:
+      <code>stabilityai/stable-diffusion-xl-base-1.0</code> (style),
+      <code>briaai/RMBG-2.0</code> (background removal) and
+      <code>ai-forever/Real-ESRGAN</code> (quality/upscale).
     </footer>
   </div>
 
